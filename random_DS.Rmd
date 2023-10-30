@@ -187,6 +187,16 @@ rf_testing_pred %>%
 hotels %>% glimpse
 ```
 
+```{r}
+hotels %>%
+  group_by(children, hotel) %>%
+  tally
+
+ x <- table(hotels$hotel, hotels$children)
+ (x[1,1] * x[2,2]) /  (x[1,2] * x[2,1])
+ chisq.test(x)
+ x
+```
 
 
 
