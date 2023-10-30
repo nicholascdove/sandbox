@@ -1,0 +1,194 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-10-25"
+---
+
+```{r}
+# Set up
+library(tidyverse)
+library(tidymodels)
+library(ggcorrplot)
+library(parsnip)
+library(ranger)
+library(yardstick)
+library(tune)
+```
+
+```{r}
+# First look at the data
+head(car_prices)
+str(car_prices)
+summary(car_prices)
+```
+```{r}
+#look at distributions
+car_prices_num  <- select_if(car_prices, is.numeric)
+for (col in 1:ncol(car_prices)) {
+    car_prices[col] %>% 
+      as.matrix %>% 
+      hist(main = names(car_prices[col]))
+}
+```
+
+```{r}
+# scale data and look at multivariate
+#scale
+car_prices_norm <- scale(car_prices)
+
+# correlation matrix
+corr_matrix <- cor(car_prices_norm)
+ggcorrplot(corr_matrix)
+```
+```{r}
+# PCA data
+data_pca <- prcomp(car_prices_norm)
+summary(data_pca)
+data_pca$loadings[,1:2]
+autoplot(data_pca, loadings = TRUE, loadings.label = TRUE)
+```
+```{r}
+# Make linear model
+mod <- lm(log(Price) ~ ., data = car_prices)
+summary(mod)
+extractAIC(mod)
+plot(mod)
+```
+
+```{r}
+# logistic regression
+mylogit <- glm(Leather ~ ., data = car_prices, family = "binomial")
+summary(mylogit)
+print(paste0("RSQ = ", 1 - mylogit$deviance / mylogit$null.deviance))
+```
+```{r}
+hotels <- 
+  read_csv("https://tidymodels.org/start/case-study/hotels.csv") %>%
+  mutate(across(where(is.character), as.factor))
+```
+```{r}
+head(hotels)
+summary(hotels)
+```
+```{r}
+hotels_num  <- select_if(hotels, is.numeric)
+for (col in 1:ncol(hotels_num)) {
+    hotels_num[col] %>% 
+      as.matrix %>% 
+      hist(main = names(hotels_num[col]))
+}
+
+hotels_norm <- scale(hotels_num)
+
+# correlation matrix
+corr_matrix <- cor(hotels_norm)
+ggcorrplot(corr_matrix)
+```
+
+```{r}
+data_pca <- prcomp(hotels_norm)
+summary(data_pca)
+data_pca$loadings[,1:2]
+autoplot(data_pca, loadings = TRUE, loadings.label = TRUE)
+```
+
+```{r}
+mod <- lm(average_daily_rate ~ ., data = hotels)
+summary(mod)
+extractAIC(mod)
+plot(mod)
+```
+```{r}
+mylogit <- glm(hotel ~ ., data = hotels, family = "binomial")
+summary(mylogit)
+print(paste0("RSQ = ", 1 - mylogit$deviance / mylogit$null.deviance))
+```
+```{r}
+set.seed(123)
+splits      <- initial_split(hotels, strata = children)
+hotel_other <- training(splits)
+hotel_test  <- testing(splits)
+```
+
+```{r}
+rf_mod <- 
+  rand_forest(trees = 1000) %>% 
+  set_engine("ranger") %>% 
+  set_mode("classification")
+```
+
+```{r}
+set.seed(234)
+rf_fit <- 
+  rf_mod %>% 
+  fit(children ~ ., data = hotel_other)
+rf_fit
+```
+```{r}
+rf_training_pred <- 
+  predict(rf_fit, hotel_other) %>% 
+  bind_cols(predict(rf_fit, hotel_other, type = "prob")) %>% 
+  # Add the true outcome data back in
+  bind_cols(hotel_other %>% 
+              select(children))
+
+rf_training_pred %>%                
+  roc_auc(truth = children, .pred_children)
+rf_training_pred %>%                
+  accuracy(truth = children, .pred_class)
+```
+```{r}
+rf_testing_pred <- 
+  predict(rf_fit, hotel_test) %>% 
+  bind_cols(predict(rf_fit, hotel_test, type = "prob")) %>% 
+  bind_cols(hotel_test %>% select(children))
+```
+
+```{r}
+rf_testing_pred %>%                   # test set predictions
+  roc_auc(truth = children, .pred_children)
+rf_testing_pred %>%                   # test set predictions
+  accuracy(truth = children, .pred_class)
+
+```
+
+```{r}
+set.seed(345)
+folds <- vfold_cv(hotel_other, v = 10)
+folds
+```
+```{r}
+rf_wf <- 
+  workflow() %>%
+  add_model(rf_mod) %>%
+  add_formula(children ~ .)
+
+set.seed(456)
+rf_fit_rs <- 
+  rf_wf %>% 
+  fit_resamples(folds)
+```
+
+```{r}
+collect_metrics(rf_fit_rs)
+```
+
+```{r}
+rf_fit %>%
+  collect_predictions() %>% 
+  roc_curve(children, .pred_class) %>% 
+  autoplot()
+```
+```{r}
+rf_testing_pred %>%
+  collect_predictions()
+```
+```{r}
+hotels %>% glimpse
+```
+
+
+
+
+
+
